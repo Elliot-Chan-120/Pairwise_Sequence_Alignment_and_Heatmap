@@ -1,11 +1,12 @@
 import plotly.express as px
 
 class SequenceAlign:
-    def __init__(self, seq_1, seq_2, sub_matrix, gap_penalty):
+    #SETUP
+    def __init__(self, sub_matrix, gap_penalty):
         self.sub_matrix = sub_matrix
         self.gap_penalty = gap_penalty
-        self.seq_1 = seq_1.upper()
-        self.seq_2 = seq_2.upper()
+        self.seq_1 = None
+        self.seq_2 = None
 
         # Store Needleman-Wunsch data
         self.nw_s_matrix = None
@@ -21,10 +22,15 @@ class SequenceAlign:
         self.sw_result = []
         self.sw_path_matrix = None
 
+    def set_sequences(self, seq1, seq2):
+        """Run this first and choose which two sequences you want to align"""
+        self.seq_1 = seq1.upper()
+        self.seq_2 = seq2.upper()
+
 # DATA GENERATION FUNCTIONS
-    def gen_alignment_data(self):
+    def gen_all_data(self):
         """
-        Run this first.
+        If you want to generate data for both alignment methods run this
         Generates all needed data to use the rest of the functions in this class.
         """
         self.gen_local_data()
@@ -137,49 +143,49 @@ class SequenceAlign:
             aligned_sequences += self.score_pos(seq1[i], seq2[i], submat, gap_penalty)
         return aligned_sequences
 
-    @staticmethod
-    def recover_align_global(traceback_matrix, seq1, seq2):
+
+    def recover_align_global(self):
         """
         Starts at bottom right corner and follows traceback matrix to reconstruct alignment for Needleman-Wunsch
         """
         aligned_seqs = ["", ""]  # Will hold two aligned sequences
-        row = len(seq1)  # Start at bottom right
-        col = len(seq2)
+        row = len(self.seq_1)  # Start at bottom right
+        col = len(self.seq_2)
 
         while row > 0 or col > 0:
-            if traceback_matrix[row][col] == 1:  # Diagonal move
-                aligned_seqs[0] = seq1[row - 1] + aligned_seqs[0]  # Match/Mismatch two amino acids
-                aligned_seqs[1] = seq2[col - 1] + aligned_seqs[1]
+            if self.nw_t_matrix[row][col] == 1:  # Diagonal move
+                aligned_seqs[0] = self.seq_1[row - 1] + aligned_seqs[0]  # Match/Mismatch two amino acids
+                aligned_seqs[1] = self.seq_2[col - 1] + aligned_seqs[1]
                 row -= 1
                 col -= 1
-            elif traceback_matrix[row][col] == 3:  # Left move
+            elif self.nw_t_matrix[row][col] == 3:  # Left move
                 aligned_seqs[0] = "-" + aligned_seqs[0]  # Insert gap in first sequence
-                aligned_seqs[1] = seq2[col - 1] + aligned_seqs[1]  # Character from second sequence
+                aligned_seqs[1] = self.seq_2[col - 1] + aligned_seqs[1]  # Character from second sequence
                 col -= 1
             else:  # Up move
-                aligned_seqs[0] = seq1[row - 1] + aligned_seqs[0]  # Insert gap in second sequence
+                aligned_seqs[0] = self.seq_1[row - 1] + aligned_seqs[0]  # Insert gap in second sequence
                 aligned_seqs[1] = "-" + aligned_seqs[1]  # Character from first sequence
                 row -= 1
         return aligned_seqs
 
-    def recover_align_local(self, score_matrix, traceback_matrix, seq1, seq2):
+    def recover_align_local(self):
         """Reconstructs alignment for Smith-Waterman starting from highest score until 0 is reached"""
         aligned_seqs = ["", ""]
-        current_row, current_col = self.max_mat(score_matrix) # start at the highest score
+        current_row, current_col = self.max_mat(self.sw_s_matrix) # start at the highest score
 
-        while traceback_matrix[current_row][current_col] > 0: # stop when 0 is reached
-            move = traceback_matrix[current_row][current_col]
+        while self.sw_t_matrix[current_row][current_col] > 0: # stop when 0 is reached
+            move = self.sw_t_matrix[current_row][current_col]
             if move == 1:           # diagonal move
-                aligned_seqs[0] = seq1[current_row - 1] + aligned_seqs[0]
-                aligned_seqs[1] = seq2[current_col - 1] + aligned_seqs[1]
+                aligned_seqs[0] = self.seq_1[current_row - 1] + aligned_seqs[0]
+                aligned_seqs[1] = self.seq_2[current_col - 1] + aligned_seqs[1]
                 current_row -= 1
                 current_col -= 1
             elif move == 3:         # left move -> insert gap in the first seq
                 aligned_seqs[0] = "-" + aligned_seqs[0]
-                aligned_seqs[1] = seq2[current_col - 1] + aligned_seqs[1]
+                aligned_seqs[1] = self.seq_2[current_col - 1] + aligned_seqs[1]
                 current_col -= 1
             elif move == 2:         # up move -> insert gap in the second seq
-                aligned_seqs[0] = seq1[current_row - 1] + aligned_seqs[0]
+                aligned_seqs[0] = self.seq_1[current_row - 1] + aligned_seqs[0]
                 aligned_seqs[1] = "-" + aligned_seqs[1]
                 current_row -= 1
         return aligned_seqs
@@ -215,10 +221,10 @@ class SequenceAlign:
         :return:
         """
         nw_raw_data = self.needleman_wunsch()
-        self.nw_s_matrix = nw_raw_data[0]
+        self.nw_s_matrix = nw_raw_data[0] # data matrices from needleman-wunsch is now class variable
         self.nw_t_matrix = nw_raw_data[1]
         self.nw_optimal_alignment = self.nw_s_matrix[len(self.seq_1)][len(self.seq_2)]
-        align_global = self.recover_align_global(self.nw_t_matrix, self.seq_1, self.seq_2)
+        align_global = self.recover_align_global()
         self.nw_result = [align_global[0], align_global[1]]
 
     def gen_local_data(self):
@@ -226,11 +232,11 @@ class SequenceAlign:
         FETCHES + GEN. RAW DATA to store in class variables
         stores optimal alignments, score + traceback matrices
         """
-        sw_raw_data = self.smith_waterman()
+        sw_raw_data = self.smith_waterman() # same principle, convert data matrices from smith-waterman to class variables
         self.sw_s_matrix = sw_raw_data[0]
         self.sw_t_matrix = sw_raw_data[1]
         self.sw_optimal_alignment = sw_raw_data[2]
-        align_local = self.recover_align_local(self.sw_s_matrix, self.sw_t_matrix, self.seq_1, self.seq_2)
+        align_local = self.recover_align_local()
         self.sw_result = [align_local[0], align_local[1]]
 
     def global_path_matrix(self):
